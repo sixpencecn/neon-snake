@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selftest</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; background: #0b1020; color: #dbe6f5; padding: 16px; }
+  li { margin: 2px 0; }
+  .pass { color: #4ade80; }
+  .fail { color: #ff6b81; font-weight: 700; }
+  #result { font-size: 15px; margin-top: 12px; padding: 8px; border: 1px solid #2a3550; }
+</style>
+</head>
+<body>
+<h3>neon-snake · logic self-test</h3>
+<ul id="out"></ul>
+<div id="result">running…</div>
+
+<script src="../game.js"></script>
+<script>
+(function () {
+  'use strict';
+  var out = document.getElementById('out');
+  var passed = 0, failed = 0;
+
+  function check(name, fn) {
+    try {
+      fn();
+      passed++;
+      out.insertAdjacentHTML('beforeend', '<li class="pass">PASS · ' + name + '</li>');
+    } catch (err) {
+      failed++;
+      out.insertAdjacentHTML('beforeend', '<li class="fail">FAIL · ' + name + ' — ' + (err && err.message ? err.message : err) + '</li>');
+    }
+  }
+
+  function eq(actual, expected, label) {
+    if (actual !== expected) throw new Error((label || '') + ' expected ' + JSON.stringify(expected) + ' got ' + JSON.stringify(actual));
+  }
+  function ok(cond, label) { if (!cond) throw new Error(label || 'assertion failed'); }
+  function fresh(opts) {
+    var g = new Snake(Object.assign({ cols: 10, rows: 10, seed: 1234 }, opts || {}));
+    return g;
+  }
+
+  /* ---- construction ---- */
+  check('starts with 3 segments heading right', function () {
+    var g = fresh();
+    eq(g.body.length, 3, 'length');
+    eq(g.direction, 'right', 'direction');
+    ok(g.food, 'food spawned');
+    eq(g.score, 0, 'score');
+    ok(g.alive, 'alive');
+  });
+
+  check('food never spawns on the snake', function () {
+    for (var s = 1; s <= 40; s++) {
+      var g = fresh({ seed: s * 7919 });
+      var hit = g.body.some(function (c) { return c.x === g.food.x && c.y === g.food.y; });
+      ok(!hit, 'seed ' + s + ' overlapped');
+    }
+  });
+
+  /* ---- input rules ---- */
+  check('rejects 180° reversal', function () {
+    var g = fresh();
+    eq(g.turn('left'), false, 'turn left');
+    eq(g.direction, 'right', 'direction unchanged');
+  });
+
+  check('rejects duplicate direction', function () {
+    var g = fresh();
+    eq(g.turn('right'), false, 'same dir');
+  });
+
+  check('accepts a legal turn and buffers 2 deep', function () {
+    var g = fresh();
+    eq(g.turn('up'), true, 'first');
+    eq(g.turn('left'), true, 'second');
+    eq(g.turn('down'), false, 'third rejected');
+    eq(g.pending.length, 2, 'buffer');
+  });
+
+  check('turn applies on next step, not immediately', function () {
+    var g = fresh();
+    g.turn('up');
+    eq(g.direction, 'right', 'not yet applied');
+    g.step();
+    eq(g.direction, 'up', 'applied after step');
+  });
+
+  /* ---- movement ---- */
+  check('head advances one cell per step', function () {
+    var g = fresh();
+    var before = { x: g.body[0].x, y: g.body[0].y };
+    g.step();
+    eq(g.body[0].x, before.x + 1, 'x');
+    eq(g.body[0].y, before.y, 'y');
+  });
+
+  check('length is stable when not eating', function () {
+    var g = fresh();
+    g.body = [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+    g.food = { x: 8, y: 8 };
+    g.step();
+    eq(g.body.length, 3, 'length');
+  });
+
+  /* ---- collisions ---- */
+  check('wall collision ends the run', function () {
+    var g = fresh();
+    g.body = [{ x: 9, y: 5 }, { x: 8, y: 5 }, { x: 7, y: 5 }];
+    var ev = g.step();
+    eq(ev.type, 'wall', 'event');
+    eq(g.alive, false, 'alive');
+  });
+
+  check('self collision ends the run', function () {
+    var g = fresh();
+    g.body = [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }, { x: 4, y: 6 }];
+    g.food = { x: 0, y: 0 };
+    var ev = g.step();
+    eq(ev.type, 'self', 'event');
+    eq(g.alive, false, 'alive');
+  });
+
+  check('moving into the vacating tail cell is allowed', function () {
+    var g = fresh();
+    // head at (5,5) moving right; tail at (5,6) is where we step into? no —
+    // build a loop where the target cell is the tail itself.
+    g.body = [{ x: 5, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }, { x: 6, y: 5 }];
+    g.direction = 'right';           // next = (6,5) == current tail
+    g.food = { x: 0, y: 0 };
+    var ev = g.step();
+    eq(ev.type, null, 'no collision');
+    eq(g.alive, true, 'alive');
+  });
+
+  /* ---- eating ---- */
+  check('eating food grows by one and scores one', function () {
+    var g = fresh();
+    g.body = [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+    g.direction = 'right';
+    g.food = { x: 3, y: 2 };
+    var ev = g.step();
+    eq(ev.type, 'food', 'event');
+    eq(g.body.length, 4, 'length');
+    eq(g.score, 1, 'score');
+    eq(g.apples, 1, 'apples');
+  });
+
+  check('bonus spawns every 5 apples', function () {
+    var g = fresh({ bonusEvery: 5 });
+    g.body = [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+    g.direction = 'right';
+    g.apples = 4;
+    g.food = { x: 3, y: 2 };
+    g.step();
+    ok(g.bonus, 'bonus should exist');
+    eq(g.bonus.max, g.bonusTtlSteps, 'ttl max');
+  });
+
+  check('bonus is worth 5 and grows the snake', function () {
+    var g = fresh();
+    g.body = [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+    g.direction = 'right';
+    g.food = { x: 9, y: 9 };
+    g.bonus = { x: 3, y: 2, ttl: 20, max: 26 };
+    var ev = g.step();
+    eq(ev.type, 'bonus', 'event');
+    eq(g.score, 5, 'score');
+    eq(g.body.length, 4, 'length');
+    eq(g.bonus, null, 'consumed');
+  });
+
+  check('bonus expires after its ttl', function () {
+    var g = fresh();
+    g.body = [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+    g.direction = 'right';
+    g.food = { x: 9, y: 9 };
+    g.bonus = { x: 9, y: 0, ttl: 1, max: 26 };
+    g.step();
+    eq(g.bonus, null, 'expired');
+  });
+
+  /* ---- pacing ---- */
+  check('speed increases with length and is floored', function () {
+    var g = fresh();
+    var start = g.stepMs();
+    g.body = new Array(30).fill(0).map(function (_, i) { return { x: i % 10, y: Math.floor(i / 10) }; });
+    var fast = g.stepMs();
+    ok(fast < start, 'should speed up: ' + start + ' -> ' + fast);
+    ok(fast >= 62, 'floor honoured: ' + fast);
+  });
+
+  /* ---- rendering helper ---- */
+  check('renderCell interpolates between previous and current', function () {
+    var g = fresh();
+    g.body = [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+    g.previous = [{ x: 1, y: 2 }, { x: 0, y: 2 }, { x: -1, y: 2 }];
+    var at0 = g.renderCell(0, 0);
+    var at1 = g.renderCell(0, 1);
+    var mid = g.renderCell(0, 0.5);
+    eq(at0.x, 1, 't=0 start');
+    eq(at1.x, 2, 't=1 end');
+    eq(mid.x, 1.5, 'midpoint');
+  });
+
+  /* ---- determinism ---- */
+  check('same seed produces the same board', function () {
+    var a = new Snake({ cols: 12, rows: 12, seed: 99 });
+    var b = new Snake({ cols: 12, rows: 12, seed: 99 });
+    eq(a.food.x, b.food.x, 'food x');
+    eq(a.food.y, b.food.y, 'food y');
+  });
+
+  /* ---- win state ---- */
+  check('board can be filled to a win', function () {
+    var g = new Snake({ cols: 4, rows: 1, seed: 7 });
+    g.body = [{ x: 2, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 0 }];
+    g.direction = 'right';
+    g.food = { x: 3, y: 0 };
+    g.step();
+    eq(g.won, true, 'won');
+    eq(g.food, null, 'no food left');
+    eq(g.alive, true, 'still alive');
+  });
+
+  document.getElementById('result').textContent =
+    'RESULT: ' + passed + ' passed, ' + failed + ' failed';
+  document.title = 'RESULT: ' + passed + ' passed, ' + failed + ' failed';
+  document.body.dataset.done = '1';
+})();
+</script>
+</body>
+</html>
