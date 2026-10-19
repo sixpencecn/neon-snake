@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070b14">
+<meta name="description" content="Neon Snake — a dependency-free, canvas-rendered snake game with interpolated motion, particle effects and touch controls.">
+<title>Neon Snake</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070b14'/%3E%3Cpath d='M7 22h6v-6h6v-6h6' stroke='%2340e0d0' stroke-width='3.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #070b14;
+    --panel: #0b1220;
+    --line: rgba(120, 170, 230, 0.14);
+    --ink: #e8eefc;
+    --muted: #7d8da8;
+    --accent: #40e0d0;
+    --accent-2: #2f81f7;
+    --danger: #ff5c7a;
+    --gold: #ffcf5a;
+    --radius: 18px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(12px, 3vw, 32px);
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(47, 129, 247, 0.16), transparent 60%),
+      radial-gradient(900px 500px at 110% 110%, rgba(64, 224, 208, 0.12), transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .shell {
+    width: min(680px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* ---------------------------------------------------------------- header */
+
+  .topbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
+
+  .brand svg { display: block; }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(19px, 4.4vw, 24px);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+  }
+
+  .sub {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+
+  .stats { display: flex; gap: 18px; }
+
+  .stat { text-align: right; }
+
+  .stat dt {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .stat dd {
+    margin: 1px 0 0;
+    font-family: var(--mono);
+    font-size: clamp(16px, 3.6vw, 20px);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #score { color: var(--accent); }
+  #speed { color: var(--accent-2); }
+
+  /* ----------------------------------------------------------------- stage */
+
+  .stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: #0a0f1e;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.05) inset,
+      0 30px 70px -30px rgba(0, 0, 0, 0.9),
+      0 0 0 1px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  #board { display: block; width: 100%; height: 100%; }
+
+  /* --------------------------------------------------------------- overlay */
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    text-align: center;
+    background: rgba(6, 10, 20, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 180ms ease, visibility 180ms ease;
+  }
+
+  /* keep the board readable behind the scrim — it is the best advertisement */
+  body[data-state="ready"] .overlay {
+    align-items: end;
+    padding-bottom: clamp(18px, 4vw, 34px);
+    background: linear-gradient(
+      to top,
+      rgba(6, 10, 20, 0.92) 0%,
+      rgba(6, 10, 20, 0.72) 26%,
+      rgba(6, 10, 20, 0.18) 58%,
+      rgba(6, 10, 20, 0) 78%
+    );
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  body[data-state="ready"] .overlay .card { text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85); }
+  body[data-state="paused"] .overlay { background: rgba(6, 10, 20, 0.66); }
+  body[data-state="over"] .overlay { background: rgba(6, 10, 20, 0.62); }
+
+  .overlay.is-visible { opacity: 1; visibility: visible; }
+
+  .overlay .card { max-width: 340px; }
+
+  .overlay h2 {
+    margin: 0 0 8px;
+    font-size: clamp(20px, 5vw, 26px);
+    letter-spacing: -0.02em;
+  }
+
+  .overlay .card p {
+    margin: 0;
+    color: #a9b8d0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .overlay .hint {
+    margin-top: 14px !important;
+    font-family: var(--mono);
+    font-size: 11.5px !important;
+    color: var(--muted) !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .cta {
+    margin-top: 16px;
+    appearance: none;
+    border: 1px solid rgba(64, 224, 208, 0.45);
+    background: linear-gradient(180deg, rgba(64, 224, 208, 0.18), rgba(64, 224, 208, 0.08));
+    color: #d6fff9;
+    font: inherit;
+    font-weight: 640;
+    font-size: 14px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+
+  .cta:hover { transform: translateY(-1px); box-shadow: 0 8px 24px -10px rgba(64, 224, 208, 0.7); }
+  .cta:active { transform: translateY(0); }
+  .cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* ------------------------------------------------------------------ dpad */
+
+  .dpad {
+    display: none;
+    grid-template-columns: repeat(3, 58px);
+    grid-template-rows: repeat(3, 58px);
+    gap: 8px;
+    justify-content: center;
+    margin: 2px auto 0;
+  }
+
+  .dpad button {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: rgba(18, 28, 46, 0.9);
+    color: #b9c9e2;
+    border-radius: 14px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .dpad button:active { background: rgba(64, 224, 208, 0.2); color: #d6fff9; }
+
+  .dpad [data-dir="up"]    { grid-area: 1 / 2; }
+  .dpad [data-dir="left"]  { grid-area: 2 / 1; }
+  .dpad [data-dir="down"]  { grid-area: 3 / 2; }
+  .dpad [data-dir="right"] { grid-area: 2 / 3; }
+
+  @media (pointer: coarse) {
+    .dpad { display: grid; }
+    .stage { cursor: default; }
+  }
+
+  /* ------------------------------------------------------------------ foot */
+
+  .foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .keys { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #c7d4e8;
+  }
+
+  #mute {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  #mute:focus-visible, .dpad button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .overlay, .cta { transition: none; }
+  }
+</style>
+</head>
+<body data-state="ready">
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="#0d1526"/>
+          <path d="M7 22h6v-6h6v-6h6" stroke="#40e0d0" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="25" cy="10" r="2.4" fill="#ff5c7a"/>
+        </svg>
+        <div>
+          <h1>Neon Snake</h1>
+          <p class="sub">24 × 24 grid · dependency free</p>
+        </div>
+      </div>
+
+      <dl class="stats" aria-label="Scoreboard">
+        <div class="stat"><dt>Score</dt><dd id="score">0</dd></div>
+        <div class="stat"><dt>Best</dt><dd id="best">0</dd></div>
+        <div class="stat"><dt>Cells/s</dt><dd id="speed">7.1</dd></div>
+      </dl>
+    </header>
+
+    <div class="stage" id="stage">
+      <canvas id="board" width="600" height="600" role="img" aria-label="Snake game board"></canvas>
+
+      <div class="overlay" id="overlay" role="dialog" aria-live="polite" aria-label="Game status">
+        <div class="card">
+          <h2 id="ov-title">Neon Snake</h2>
+          <p id="ov-body"></p>
+          <p class="hint" id="ov-hint"></p>
+          <button class="cta" id="restart" type="button">Play</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dpad" aria-label="Touch controls">
+      <button type="button" data-dir="up" aria-label="Up">▲</button>
+      <button type="button" data-dir="left" aria-label="Left">◀</button>
+      <button type="button" data-dir="down" aria-label="Down">▼</button>
+      <button type="button" data-dir="right" aria-label="Right">▶</button>
+    </div>
+
+    <footer class="foot">
+      <div class="keys">
+        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd>
+        <span>or</span>
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+        <span>·</span>
+        <kbd>Space</kbd><span>pause</span>
+        <span>·</span>
+        <kbd>R</kbd><span>restart</span>
+      </div>
+      <button id="mute" type="button" aria-pressed="false" aria-label="Toggle sound">🔊</button>
+    </footer>
+  </main>
+
+  <script src="game.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
