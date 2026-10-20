@@ -5,7 +5,8 @@ Everything is hand-written: no bundler, no engine, no tracking script. Open the 
 
 **▶ Play: https://sixpencecn.github.io/neon-snake/**
 
-📄 **Product spec:** [docs/PRD.md](docs/PRD.md) — problem statement, goals & non-goals, P0/P1 requirements with acceptance criteria, metric tree, RICE, trade-off matrix, rollout and ADRs.
+📄 **Product spec:** [docs/PRD-v2.0.md](docs/PRD-v2.0.md) — v2.0, 17 numbered sections (reading map, metric tree, mechanics & balancing, accessibility, privacy, analytics, kill criteria) · **[Word version](docs/PRD-v2.0.docx)**
+📄 v1.0 retained for comparison: [docs/PRD.md](docs/PRD.md)
 
 ![Neon Snake](docs/screenshot.png)
 
