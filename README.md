@@ -5,6 +5,8 @@ Everything is hand-written: no bundler, no engine, no tracking script. Open the 
 
 **▶ Play: https://sixpencecn.github.io/neon-snake/**
 
+📄 **Product spec:** [docs/PRD.md](docs/PRD.md) — problem statement, goals & non-goals, P0/P1 requirements with acceptance criteria, metric tree, RICE, trade-off matrix, rollout and ADRs.
+
 ![Neon Snake](docs/screenshot.png)
 
 ---
